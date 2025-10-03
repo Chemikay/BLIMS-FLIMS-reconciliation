@@ -2,6 +2,9 @@ library(readxl)
 library(janitor)
 library(here)
 library(dplyr)
+library(tidyverse)
+library(data.table)
+library(writexl)
 
 #Pull in all data except lab file
 lab_file <- "BLIMS - FLIMS Transfer (1).xlsx"
@@ -76,48 +79,48 @@ lab_list2 <- mutate(lab_list2,
                   blims_flims_complete = as.character(blims_flims_complete),
                   key = as.character(key))
 
+#remove rows without any sample IDs
+lab_list3 <- filter(lab_list2, blims_sample_i_ds != "NA" | flims_sample_i_ds != "NA") 
+#there are no rows where NA values in all three of these columns
+
+
 # Check if there are any duplicates using just blims_sample_i_ds as unique identifier, shouldn't be any
-lab_list2 %>% count(blims_sample_i_ds) %>% filter(n > 1)
- #all just text descriptions or NA entries so fine to leave
+lab_list3 %>% count(blims_sample_i_ds) %>% filter(n > 1)
+ #all just text descriptions entries so fine to leave
 
 # Check if there are any duplicates using just flims_sample_i_ds as unique identifier, shouldn't be any
-lab_list2 %>% count(flims_sample_i_ds) %>% filter(n > 1)
+lab_list3 %>% count(flims_sample_i_ds) %>% filter(n > 1)
 #one sample is found as dup - EF0825B0073, other is one identified as cancelled, rest are NA. 
 #flims_sample_i_ds EF0825B0073 has two different blims_i_ds: EF0824B00028 (shows up as one wdl_sample_id) and EF0824B00041 (shows up as one wdl_sample_id))
 ##Flag to come back to
 
+## looking to see which IDs on WDL are flims IDs rather than blims IDs
 
-wdl6 <- wdl5 %>% filter(wdl_sample_id %in% lab_list2$blims_sample_i_ds)
+#wdl sample IDs that are reflected in blims sample IDs
+wdl_in_blims <- wdl5 %>% filter(wdl_sample_id %in% lab_list3$blims_sample_i_ds)
+#706 total samples
 
-#capture in new subset which wdl IDs are NOT in the blims sample ids column and 
+#wdl sample IDs not reflected in blims sample IDs
+wdl_not_in_blims <- wdl5 %>% filter(!(wdl_sample_id %in% lab_list3$blims_sample_i_ds))
+#316 total samples
 
-print(wdl5)
+#double check if any of those IDs not reflected in blims sample IDs are captured in flims IDs
+wdl_not_in_blims_but_flims <-wdl_not_in_blims %>% filter(wdl_sample_id %in% lab_list3$flims_sample_i_ds)
+#46 total samples
 
+#wdl sample IDs reflected in the flims sample IDs
+wdl_in_flims <- wdl5 %>% filter(wdl_sample_id %in% lab_list3$flims_sample_i_ds)
+#46 total samples
 
-#combine dataframes
-data_bound <- bind_rows(wdl5, lab_list2)
+#are the sample IDs in 'wdl_not_in_blims_but_flims' and 'wdl_in_flims' the same?
+check1 <- wdl_not_in_blims_but_flims %>% filter(wdl_sample_id %in% wdl_in_flims$wdl_sample_id)
+#46 total samples so yes, these are the exact same sample IDs.
 
-match(data_bound$wdl_sample_id, data_bound$blims_sample_i_ds)
+#double check if any of those flims IDs from lab list happen to also be the blims sample IDs
+wdl_in_flims_in_blims <- wdl_in_flims %>% filter(wdl_sample_id %in% lab_list3$blims_sample_i_ds)
+#0 total samples
 
-
-data_bound %>% summarize(across(everything(), ~sum(is.na(.x))))
-#there are NA values and likely some of the rows with NA in all of the columns for sample ids 
-
-names(data_bound)
-
-data_bound1 <- filter(data_bound, wdl_sample_id == "NA" & blims_sample_i_ds == "NA" & flims_sample_i_ds== "NA") 
-#there are no rows where NA values in all three of these columns
-
-
-#look for where sample IDs match between the lab list and wdl
-data_bound %>%
-  count(wdl_sample_id, blims_sample_i_ds) %>% filter(n>1)
-#n = 306
-
-#pivot wider to align the sample IDs 
-
-#data_bound_wide <- data_bound %>%
- # pivot_wider(id_cols = c(blims_sample_i_ds, 
-                         # names_from = ))
+#save file of output
+write_xlsx(wdl_not_in_blims_but_flims, "C:/Users/krein/Documents/wdl_not_in_blims_but_flims.xlsx")
 
 
