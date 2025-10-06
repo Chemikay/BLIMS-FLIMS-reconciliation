@@ -120,7 +120,21 @@ check1 <- wdl_not_in_blims_but_flims %>% filter(wdl_sample_id %in% wdl_in_flims$
 wdl_in_flims_in_blims <- wdl_in_flims %>% filter(wdl_sample_id %in% lab_list3$blims_sample_i_ds)
 #0 total samples
 
+#parse out these wdl IDs from wdl dataframe with sample collection dates for more context
+wdl_query_dates <- wdl1 %>% filter(sample_code %in% wdl_not_in_blims_but_flims$wdl_sample_id)
+
+#remove unnecessary columns from dataframe
+wdl_query_dates <- select(wdl_query_dates, collection_date, data_owner, data_status, long_station_name, short_station_name, station_number, description, sample_code)
+
+#wdl dataframe has data broken down to analyte level unlike lab dataframe, so need to select just row for each, remove by selecting the first one
+wdl_query_dates_sample <- wdl_query_dates %>%  distinct(sample_code, collection_date, data_owner,data_status, long_station_name, short_station_name, station_number, description)
+
 #save file of output
 write_xlsx(wdl_not_in_blims_but_flims, "C:/Users/krein/Documents/wdl_not_in_blims_but_flims.xlsx")
 
+#get DEMP specific output to share with Craig
+demp_flims_not_blims <- filter(wdl_not_in_blims_but_flims, data_owner == "0310") 
+
+#save file of DEMP specific output
+write_xlsx(demp_flims_not_blims, "C:/Users/krein/Documents/demp_flims_not_blims.xlsx")
 
