@@ -28,15 +28,15 @@ names(lab_list)
 
 #remove unnecessary columns from both dataframes
 
-wdl2 <- select(wdl1, data_owner, data_status, long_station_name, short_station_name, station_number, description, sample_code)
+wdl2 <- select(wdl1, collection_date, data_owner, data_status, long_station_name, short_station_name, station_number, description, sample_code)
 
-lab_list1 <- select(lab_list, station_name, error_occurred_skipped, flims_sample_i_ds, blims_flims_complete, key,
+lab_list1 <- select(lab_list, station_name, error_occurred_skipped, collection_date, flims_submittal_id, flims_sample_i_ds, blims_submittal_id, blims_flims_complete, key,
                     awaiting_field_spreadsheet, blims_sample_i_ds, requires_lab_update)
 
 #rename columns in lab's list to match what's in wdl, adjust those in wdl for ease of use
 
-view(lab_list1$station_name)
-  #lab's ID of the station is not the official short/long/number for the station submitted by field group, so will have to deal with this later to match up
+view(unique(lab_list1$station_name))
+#lab's ID of the station is not the official short/long/number for the station submitted by field group, so will have to deal with this later to match up
 
 lab_list2 <- lab_list1 %>%
   rename('station_lab' = 'station_name')
@@ -56,7 +56,7 @@ str(lab_list2)
 
 #wdl dataframe has data broken down to analyte level unlike lab dataframe, so need to select just row for each, remove by selecting the first one
 
-wdl4 <- wdl3 %>%  distinct(wdl_sample_id, data_owner,data_status_wdl, long_station_wdl,short_station_wdl,station_num_wdl,description)
+wdl4 <- wdl3 %>%  distinct(collection_date, wdl_sample_id, data_owner,data_status_wdl, long_station_wdl,short_station_wdl,station_num_wdl,description)
 
 # Check if there are any duplicates using just wdl_sample_id as unique identifier. shouldn't be any
 wdl4 %>% count(wdl_sample_id) %>% filter(n > 1)
@@ -79,62 +79,128 @@ lab_list2 <- mutate(lab_list2,
                   blims_flims_complete = as.character(blims_flims_complete),
                   key = as.character(key))
 
+#because lab list is nested, fill out NA values with submittal-specific metadata
+lab_list3 <- lab_list2 %>%
+  fill(collection_date, 
+       blims_submittal_id,
+       flims_submittal_id,.direction = "down")
+
 #remove rows without any sample IDs
-lab_list3 <- filter(lab_list2, blims_sample_i_ds != "NA" | flims_sample_i_ds != "NA") 
-#there are no rows where NA values in all three of these columns
+lab_list4 <- filter(lab_list3, blims_sample_i_ds != "NA" | flims_sample_i_ds != "NA") 
+#there are 286 rows where NA values in all of these columns, verify
+sum(is.na(lab_list3$blims_sample_i_ds) & is.na(lab_list3$flims_sample_i_ds))
+#286, correct
+
+#look at which data have these missing
+na_both_ids <- lab_list3 %>%
+  filter(is.na(blims_sample_i_ds) & is.na(flims_sample_i_ds))
+#from first submittal ID row due to nesting
 
 
-# Check if there are any duplicates using just blims_sample_i_ds as unique identifier, shouldn't be any
-lab_list3 %>% count(blims_sample_i_ds) %>% filter(n > 1)
- #all just text descriptions entries so fine to leave
+#look at which data have both a blims and flims id
+both_ids <- lab_list3 %>%
+  filter(blims_sample_i_ds != "NA" & flims_sample_i_ds != "NA")
+#1104
 
-# Check if there are any duplicates using just flims_sample_i_ds as unique identifier, shouldn't be any
-lab_list3 %>% count(flims_sample_i_ds) %>% filter(n > 1)
-#one sample is found as dup - EF0825B0073, other is one identified as cancelled, rest are NA. 
-#flims_sample_i_ds EF0825B0073 has two different blims_i_ds: EF0824B00028 (shows up as one wdl_sample_id) and EF0824B00041 (shows up as one wdl_sample_id))
-##Flag to come back to
+#look for any repeats of IDs between blims and flims in lab list
+any(lab_list4[[5]] %in% lab_list4[[10]])
+#false, so no repeats
 
-## looking to see which IDs on WDL are flims IDs rather than blims IDs
+#test to investigate Taylor's code and discrepency found. 
+#lab_list2a <- filter(lab_list2, blims_sample_i_ds != "NA" | flims_sample_i_ds != "NA")
 
-#wdl sample IDs that are reflected in blims sample IDs
-wdl_in_blims <- wdl5 %>% filter(wdl_sample_id %in% lab_list3$blims_sample_i_ds)
-#706 total samples
+#format collection date column of wdl and lab_list
+wdl5$collection_date <- as.Date(wdl5$collection_date, format = "%m/%d/%Y %H:%M")
+lab_list4$collection_date <- as.Date(lab_list4$collection_date, format = "%m/%d/%Y %H:%M")
 
-#wdl sample IDs not reflected in blims sample IDs
-wdl_not_in_blims <- wdl5 %>% filter(!(wdl_sample_id %in% lab_list3$blims_sample_i_ds))
-#316 total samples
+#make a new df with records in wdl5 but not in lab_list4 based on collection_date
+#dates_wdl <- anti_join(wdl5, lab_list4, by = "collection_date")
+#276
 
-#double check if any of those IDs not reflected in blims sample IDs are captured in flims IDs
-wdl_not_in_blims_but_flims <-wdl_not_in_blims %>% filter(wdl_sample_id %in% lab_list3$flims_sample_i_ds)
-#46 total samples
+#make a new df with records in lab_list1v3 but not in wdl5 based on collection_date
+#dates_lab <- anti_join(lab_list4, wdl5, by = "collection_date")
+#178
 
-#wdl sample IDs reflected in the flims sample IDs
-wdl_in_flims <- wdl5 %>% filter(wdl_sample_id %in% lab_list3$flims_sample_i_ds)
-#46 total samples
+#check if any of the records in the lab data that don't have collecion dates in wdl have matching flims/blims IDs in wdl$wdl_sample_id
+#lab_blims_matches <- dates_lab %>% filter(blims_sample_i_ds %in% wdl5$wdl_sample_id) #78
+#lab_flims_matches <- dates_lab %>% filter(flims_sample_i_ds %in% wdl5$wdl_sample_id) #0
 
-#are the sample IDs in 'wdl_not_in_blims_but_flims' and 'wdl_in_flims' the same?
-check1 <- wdl_not_in_blims_but_flims %>% filter(wdl_sample_id %in% wdl_in_flims$wdl_sample_id)
-#46 total samples so yes, these are the exact same sample IDs.
+#check if any of the records in the wdl data that don't have collecion dates in lab have matching flims/blims IDs in lab_list1v3$flims_sample_i_ds/lab_list1v3$blims_sample_i_ds
+#wdl_blims_matches <- dates_wdl %>% filter(wdl_sample_id %in% lab_list4$blims_sample_i_ds) #84
+#wdl_flims_matches <- dates_wdl %>% filter(wdl_sample_id %in% lab_list4$flims_sample_i_ds) #0
 
-#double check if any of those flims IDs from lab list happen to also be the blims sample IDs
-wdl_in_flims_in_blims <- wdl_in_flims %>% filter(wdl_sample_id %in% lab_list3$blims_sample_i_ds)
-#0 total samples
+#create a long format of lab_list4 with both sample ID types in one column
+#lab_long <- lab_list4 %>%
+#  select(collection_date, blims_sample_i_ds, flims_sample_i_ds) %>%
+#  pivot_longer(cols = c(blims_sample_i_ds, flims_sample_i_ds),
+#               names_to = "id_type",
+#               values_to = "lab_sample_id")
+## Issue here that I see with Taylor's code is for those samples that have both a blims and flims ID from lab's list, it's just selecting the first one it appears.
 
-#parse out these wdl IDs from wdl dataframe with sample collection dates for more context
-wdl_query_dates <- wdl1 %>% filter(sample_code %in% wdl_not_in_blims_but_flims$wdl_sample_id)
+#join wdl5 with lab_list4 based on matching sample IDs 
+join1 <- wdl5 %>%
+  inner_join(lab_list4, by = c("wdl_sample_id" = "blims_sample_i_ds")) %>%
+  rename('wdl_blims_id' = 'wdl_sample_id')
 
-#remove unnecessary columns from dataframe
-wdl_query_dates <- select(wdl_query_dates, collection_date, data_owner, data_status, long_station_name, short_station_name, station_number, description, sample_code)
+join2 <- wdl5 %>%
+  inner_join(lab_list4, by = c("wdl_sample_id" = "flims_sample_i_ds"))%>%
+  rename('wdl_flims_id' = 'wdl_sample_id')
 
-#wdl dataframe has data broken down to analyte level unlike lab dataframe, so need to select just row for each, remove by selecting the first one
-wdl_query_dates_sample <- wdl_query_dates %>%  distinct(sample_code, collection_date, data_owner,data_status, long_station_name, short_station_name, station_number, description)
+result <- bind_rows(join1, join2)
+#752 samples
 
-#save file of output
-write_xlsx(wdl_not_in_blims_but_flims, "C:/Users/krein/Documents/wdl_not_in_blims_but_flims.xlsx")
+#looking at the result df, there are instances where the sample collection dates do not match between the wdl5 and lab_list4
+join3 <- wdl5 %>%
+  inner_join(lab_list4, by = c("wdl_sample_id" = "blims_sample_i_ds", "collection_date" = "collection_date")) %>%
+  rename('wdl_blims_id' = 'wdl_sample_id')
 
-#get DEMP specific output to share with Craig
-demp_flims_not_blims <- filter(wdl_not_in_blims_but_flims, data_owner == "0310") 
+join4 <- wdl5 %>%
+  inner_join(lab_list4, by = c("wdl_sample_id" = "flims_sample_i_ds", "collection_date" = "collection_date"))%>%
+  rename('wdl_flims_id' = 'wdl_sample_id')
 
-#save file of DEMP specific output
-write_xlsx(demp_flims_not_blims, "C:/Users/krein/Documents/demp_flims_not_blims.xlsx")
+result2 <- bind_rows(join3, join4)
+#204 samples, so 548 samples where the lab's list and wdl export disagree on the sample collection date
+
+#filter for samples that have mismatched collection dates, rename collection date fields for traceability, id_type field defines what lab_list FLIMS/BLIMS ID matched w/the wdl_sample_id
+non_matching_dates <- result %>%
+  filter(collection_date.x != collection_date.y) %>%
+  rename(wdl_collection_date = collection_date.x,
+         lab_collection_date = collection_date.y)
+#548
+
+
+
+#outstanding question: how many, and which, samples are on wdl with flims vs blims ID that have both per lab's list
+both_ids_vs_wdl <- wdl5 %>%
+  inner_join(both_ids, by = c("wdl_sample_id" = "lab_sample_id"))
+
+#how many and which are on wdl and not in lab list
+
+#how many and which are not on wdl but on lab list
+
+
+
+
+
+#join wdl5 with lab_long on sample ID and collection date, see what samples have matching collection dates and sample IDs
+matching_samples <- wdl5 %>%
+  inner_join(lab_long, by = c("wdl_sample_id" = "lab_sample_id", "collection_date" = "collection_date"))
+#35 records
+
+#see if any of the samples from check1 are present in the matching_samples df
+check2 <- check1[check1$wdl_sample_id %in% matching_samples$wdl_sample_id, ]
+#10
+
+#join dfs based on sample ids
+sample_id_matches <- wdl5 %>%
+  inner_join(lab_long, by = c("wdl_sample_id" = "lab_sample_id"))
+#752
+
+#filter for samples that have mismatched collection dates, rename collection date fields for traceability, id_type field defines what lab_list FLIMS/BLIMS ID matched w/the wdl_sample_id
+non_matching_dates <- sample_id_matches %>%
+  filter(collection_date.x != collection_date.y) %>%
+  rename(wdl_collection_date = collection_date.x,
+         lab_collection_date = collection_date.y)
+#548
+
 
