@@ -61,15 +61,15 @@ str(lab_list2)
 wdl4 <- wdl3 %>%  distinct(collection_date, short_station_wdl, wdl_sample_id, station_num_wdl, data_owner, data_status_wdl, long_station_wdl, description)
                            
 #Check if there are any duplicates using just wdl_sample_id as unique identifier. shouldn't be any
-#wdl4 %>% count(wdl_sample_id) %>% filter(n > 1)
+wdl4 %>% count(wdl_sample_id) %>% filter(n > 1)
 #two cases
 
 #take a closer look
-#dups <- wdl4 %>%
-#  count(wdl_sample_id) %>%
-#  filter(n>1) %>%
-#  select(-n) %>%
-#  left_join(wdl4, by = join_by(wdl_sample_id))
+dups <- wdl4 %>%
+  count(wdl_sample_id) %>%
+  filter(n>1) %>%
+  select(-n) %>%
+  left_join(wdl4, by = join_by(wdl_sample_id))
 #these are NA columns for the sample ID and can be removed
 
 wdl5 <- wdl4 %>% 
@@ -102,39 +102,15 @@ lab_long <- lab_list4 %>%
     values_to = "lab_sample_id"
   )
 
-#reduce lab_long to exclude records that have NA in sample ID field
-#lab_long2 <- lab_long %>%
-#  filter(
-#    !is.na(lab_sample_id))
-#21 records
-
-#remove specific records from the dataframe
-#lab_long3 <- lab_long2 %>%
-#  filter(
-#    !lab_sample_id %in% c(
-#      "Parallel FLIMS Submittal from 2024",
-#      "Cannot Print COC",
-#      "Error: ① Occurred during Acception; submittal went through and samples are appearing in backlog",
-#      "Error: Duplicate sample was created with BLIMS ID; Renamed duplicate to OM0824B00022-DUP",
-#      "Error: ②Occurred during <Proceed>; Hit <Proceed> again; Submittal went through and samples are in backlog",
-#      "Error: ③Occurred after submitting sample condition; submittal went through",
-#      "Received by Erik Senter",
-#      "Parallel FLIMS Submittal from 2024; New FLIMS E0725B0030",
-#      "Parallel FLIMS Submittal from 2024; New FLIMS E0725B0031",
-#      "Error: ⑤ Occurred during  <Proceed>"
-#    )
-#  )
-#21 records
 
 #####################################################
 ###  Analyses
 #####################################################
 
-#look at which data have these missing
+#look at which data have both flims and blims IDs missing
 na_both_ids <- lab_list4 %>%
   filter(is.na(blims_sample_i_ds) & is.na(flims_sample_i_ds))
 #none
-
 
 #look at which data have both a blims and flims id
 both_ids <- lab_list4 %>%
@@ -144,23 +120,6 @@ both_ids <- lab_list4 %>%
 #look for any repeats of IDs between blims and flims in lab list
 any(lab_list4[[3]] %in% lab_list4[[4]])
 #false, so no repeats
-
-#make a new df with records in wdl5 but not in lab_list4 based on collection_date
-#dates_wdl <- anti_join(wdl5, lab_list4, by = "collection_date")
-#276
-
-#make a new df with records in lab_list1v3 but not in wdl5 based on collection_date
-#dates_lab <- anti_join(lab_list4, wdl5, by = "collection_date")
-#178
-
-#check if any of the records in the lab data that don't have collecion dates in wdl have matching flims/blims IDs in wdl$wdl_sample_id
-#lab_blims_matches <- dates_lab %>% filter(blims_sample_i_ds %in% wdl5$wdl_sample_id) #78
-#lab_flims_matches <- dates_lab %>% filter(flims_sample_i_ds %in% wdl5$wdl_sample_id) #0
-
-#check if any of the records in the wdl data that don't have collecion dates in lab have matching flims/blims IDs in lab_list1v3$flims_sample_i_ds/lab_list1v3$blims_sample_i_ds
-#wdl_blims_matches <- dates_wdl %>% filter(wdl_sample_id %in% lab_list4$blims_sample_i_ds) #84
-#wdl_flims_matches <- dates_wdl %>% filter(wdl_sample_id %in% lab_list4$flims_sample_i_ds) #0
-
 
 #join wdl5 with lab_list4 based on matching sample IDs 
 join1 <- wdl5 %>%
@@ -229,8 +188,7 @@ lab_list5 <- lab_list4 %>%
     !flims_submittal_id %in% matching$flims_submittal_id,
     !blims_submittal_id %in% matching$blims_submittal_id
   )
-#remove NA IDs & example row
-lab_list5 <- lab_list5 %>% filter(!is.na(flims_sample_i_ds)) #samples with NA in $flims_sample_i_ds, $blims_sample_i_ds denotes comments instead of ID numbers, review samples as needed.
+#remove example row
 lab_list5 <- lab_list5 %>% filter(station_lab != "Example")
 
 ### Final Findings:
