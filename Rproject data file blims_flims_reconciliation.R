@@ -128,7 +128,9 @@ join1 <- wdl5 %>%
   #706 samples with matching BLIMS IDs
 join2 <- wdl5 %>%
   inner_join(lab_list4, by = c("wdl_sample_id" = "flims_sample_i_ds"))%>%
-  rename('wdl_flims_id' = 'wdl_sample_id')
+  rename('wdl_flims_id' = 'wdl_sample_id',
+         wdl_collection_date = collection_date.x,
+         lab_collection_date = collection_date.y)
   #46 samples with matching FLIMS IDs
 result <- bind_rows(join1, join2)
 #752 samples between wdl and Lab that have a matching sample ID (FLIMS or BLIMS).
@@ -190,6 +192,41 @@ lab_list5 <- lab_list4 %>%
   )
 #remove example row
 lab_list5 <- lab_list5 %>% filter(station_lab != "Example")
+#355 samples in lab that dont have matching IDs in wdl
+
+#filter out sample records that list year 2025 in the sample IDs in Lab
+#first for blims IDs
+year1 <- lab_list4 %>%
+  mutate(
+    mmyy = str_extract(blims_sample_i_ds, "^[A-Za-z]+(\\d{4})") %>%
+      str_sub(-4, -1),   
+    
+    year = str_sub(mmyy, 3, 4)  
+  ) %>%
+  filter(year == "25")
+#just the example file (ignore)
+
+#second is for flims IDs
+year_2025_lab <- lab_list4 %>%
+  mutate(
+    mmyy = str_extract(flims_sample_i_ds, "^[A-Za-z]+(\\d{4})") %>%
+      str_sub(-4, -1),   
+    
+    year = str_sub(mmyy, 3, 4)  
+  ) %>%
+  filter(year == "25")
+#1057 samples where flims ID uses year 25 for 2024 data
+
+#filter out sample records that list year 2025 in the sample IDs in WDL
+year_2025_wdl <- wdl5 %>%
+  mutate(
+    mmyy = str_extract(wdl_sample_id, "^[A-Za-z]+(\\d{4})") %>%
+      str_sub(-4, -1),   
+    
+    year = str_sub(mmyy, 3, 4)  
+  ) %>%
+  filter(year == "25")
+#4 samples where sample ID uses year 25 for 2024 data.
 
 ### Final Findings:
 #########################################################################################*
@@ -209,7 +246,7 @@ lab_list5 <- lab_list5 %>% filter(station_lab != "Example")
 #########################################################################################*
 
 #generate lists of project specific sample numbers for the various queries 
-prefix_table <- lab_list5 %>%
+prefix_table <- lab_list5 %>% #This one will have some non standard project names due to metadata in sample ID column 
   mutate(prefix = str_extract(blims_sample_i_ds, "^[A-Za-z]+")) %>%
   count(prefix, name = "sample_count")
 
@@ -229,7 +266,6 @@ prefix_table_correct <- matching_samples %>%
   mutate(prefix = str_extract(wdl_sample_id, "^[A-Za-z]+")) %>%
   count(prefix, name = "sample_count")
 
-
 #############################################
 #### exporting data 
 #############################################
@@ -238,5 +274,7 @@ write.csv(non_matching_dates, "non_matching_dates.csv", row.names = FALSE) #548 
 write.csv(non_matching_ids, "non_matching_ids.csv", row.names = FALSE) #270 samples
 write.csv(matching_samples, "matching_samples.csv", row.names = FALSE) #204 samples
 write.csv(lab_list5, "lab_list5.csv", row.names = FALSE) #348 samples
-
+write.csv(year_2025_lab, "year_2025_lab.csv", row.names = FALSE) #1057 samples
+write.csv(year_2025_wdl, "year_2025_wdl.csv", row.names = FALSE) #4 samples
+write.csv(join2, "join2.csv", row.names = FALSE) #46 samples
 
