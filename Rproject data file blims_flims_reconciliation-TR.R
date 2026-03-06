@@ -245,6 +245,66 @@ year_2025_wdl <- wdl5 %>%
 #*  non_matching_ids contains 270 wdl samples that dont have matching sample IDs in lab   
 #########################################################################################*
 
+#flag samples from WDL whose sample ID serial numbers have less than 5 digits after the "B".denote number of digits.  
+serial1 <- wdl4 %>%
+  mutate(
+    serial = str_extract(wdl_sample_id, "(?<=B)\\d+"),
+    serial_length = nchar(serial),
+    serial_flag = serial_length < 5
+  )
+
+#flims IDs that had less than 5 digits post "B"
+serial_films <- serial1 %>%
+  filter(!wdl_sample_id %in% lab_list4$blims_sample_i_ds)
+
+#filter to just blims ids
+serial1 <- serial1 %>%
+  filter(wdl_sample_id %in% lab_list4$blims_sample_i_ds)
+
+#match those flagged samples with the original df to pull the original records into wdl_blims_serial df
+wdl_blims_serial <- wdl4 %>%
+  semi_join(serial1 %>% filter(serial_flag), by = "wdl_sample_id")
+
+#repeat that process but with the lab data
+serial2 <- lab_list4 %>%
+  mutate(
+    serial = str_extract(blims_sample_i_ds, "(?<=B)\\d+"),
+    serial_length = nchar(serial),
+    serial_flag = serial_length < 5)
+
+#match those flagged samples with the original df to pull the original records into wdl_blims_serial df
+lab_blims_serial <- lab_list4 %>%
+  semi_join(serial2 %>% filter(serial_flag), by = "blims_sample_i_ds")    
+    
+#####################
+#serial number query
+#####################
+
+#filter wdl4 to only include sample IDs present in lab_list4$blims ids
+#same as serial1 but with less fields
+serialb <- wdl4 %>%
+  filter(wdl_sample_id %in% lab_list4$blims_sample_i_ds)
+
+#double check project prefixes
+prefix_serial <- serialb %>%
+  mutate(prefix = str_extract(wdl_sample_id, "^[A-Za-z]+")) %>%
+  count(prefix, name = "sample_count")
+
+#parse ID into components
+serialb <- serialb %>%
+  mutate(
+    prefix   = str_extract(wdl_sample_id, "^[A-Za-z]{1,4}\\d{4}B"),
+    num_tail = str_extract(wdl_sample_id, "(?<=B)\\d+"),
+    num_tail_int = as.integer(num_tail)
+  )
+
+#group by $data_owner, look for conflicts
+serial_conflicts <- serialb %>%
+  group_by(data_owner, prefix, num_tail_int) %>%
+  filter(n() > 1) %>%
+  arrange(data_owner, prefix, num_tail_int, wdl_sample_id)
+#it appears there are no conflicts
+
 #generate lists of project specific sample numbers for the various queries 
 prefix_table <- lab_list5 %>% #This one will have some non standard project names due to metadata in sample ID column 
   mutate(prefix = str_extract(blims_sample_i_ds, "^[A-Za-z]+")) %>%
@@ -259,7 +319,7 @@ prefix_table_match_no_date <- non_matching_dates %>%
   count(prefix, name = "sample_count")
 
 prefix_table_match <- sample_id_matches %>%
-  mutate(prefix = str_extract(lab_sample_id, "^[A-Za-z]+")) %>%
+  mutate(prefix = str_extract(wdl_sample_id, "^[A-Za-z]+")) %>%
   count(prefix, name = "sample_count")
 
 prefix_table_correct <- matching_samples %>%
@@ -277,4 +337,6 @@ write.csv(lab_list5, "lab_list5.csv", row.names = FALSE) #348 samples
 write.csv(year_2025_lab, "year_2025_lab.csv", row.names = FALSE) #1057 samples
 write.csv(year_2025_wdl, "year_2025_wdl.csv", row.names = FALSE) #4 samples
 write.csv(join2, "join2.csv", row.names = FALSE) #46 samples
+write.csv(wdl_blims_serial, "wdl_blims_serial.csv", row.names = FALSE) #wdl samples with ID #s that have less than 5 digits following the "B"
+write.csv(lab_blims_serial, "lab_blims_serial.csv", row.names = FALSE) #lab samples with ID #s that have less than 5 digits following the "B"
 
